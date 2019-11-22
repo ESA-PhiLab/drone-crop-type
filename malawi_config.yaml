@@ -1,0 +1,14 @@
+gpu_device: 2/scratch-a/jmrziglod/sen2agri/data//scratch-a/jmrziglod/sen2agri/data/
+mosaics_path: /scratch-a/jmrziglod/sen2agri/data/summer_data/mosaics/*.tif
+patches_path: /scratch-a/jmrziglod/sen2agri/data/summer_data/patches/reviewed/{label}/{mosaic}_{polygon}_*.png
+models_path: ../experiments
+predictions_path: ../experiments/{model}/predictions/predictions_{mosaic}.shp
+
+## Training parameters:
+training_epochs: 20
+# Here we can choose from two options: a real number lower than 1 is the ratio of the
+# validation dataset to the training dataset. An integer greater than 1 is the number 
+# of polygons that are used for each class as validation sample.
+validation_split: 7
+testing_split: 15
+class_weights: False
