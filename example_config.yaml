@@ -1,3 +1,0 @@
-gpu_device: 0
-patches_path: ../data/patches/reviewed/{label}/{mosaic}_*.png
-models_path: ../experiments
