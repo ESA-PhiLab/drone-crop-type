@@ -6,9 +6,9 @@ import json
 import os
 
 import tensorflow as tf
-from tensorflow.keras import callbacks as keras_callbacks
 from tensorflow.keras import layers, models, optimizers
-from tensorflow.keras.applications.xception import Xception
+import tensorflow.keras.applications.xception as keras_xception
+import tensorflow.keras.applications.vgg16 as keras_vgg16
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix, classification_report, f1_score, precision_score, recall_score
@@ -62,46 +62,6 @@ def plot_confusion_matrix(
                     color="white" if cm[i, j] > thresh else "black")
 
     return ax
-
-
-class AdvancedMetrics(keras_callbacks.Callback):
-    def __init__(self, val_data):
-        super().__init__()
-        self.validation_data = val_data
-    
-    def on_train_begin(self, logs={}):
-        self.val_f1s = []
-        self.val_recalls = []
-        self.val_precisions = []
- 
-    def on_epoch_end(self, epoch, logs={}):
-        b_predictions, b_targets = None, None
-        for b, batch in enumerate(self.validation_data):
-            if b > len(self.validation_data):
-                break
-
-            inputs, targets = batch
-            predictions = self.model.predict_on_batch(inputs)
-            targets, predictions = \
-                np.argmax(targets, 1), np.argmax(predictions, 1)
-
-            if b_predictions is None:
-                b_predictions = predictions
-                b_targets = targets
-            else:
-                b_predictions = np.concatenate([b_predictions, predictions])
-                b_targets = np.concatenate([b_targets, targets])
-
-        _val_f1 = f1_score(b_targets, b_predictions, average='macro')
-        _val_recall = recall_score(b_targets, b_predictions, average='macro')
-        _val_precision = precision_score(b_targets, b_predictions, average='macro')
-        self.val_f1s.append(_val_f1)
-        self.val_recalls.append(_val_recall)
-        self.val_precisions.append(_val_precision)
-        print("\n val_f1: {:.3f} — val_precision: {:.3f} — val_recall {:.3f}".format(
-            _val_f1, _val_precision, _val_recall
-        ))
-        return
 
 
 class PretrainedModel:
@@ -230,30 +190,58 @@ class PretrainedModel:
             fig.savefig(plot_file)
 
         return results
+    
+def add_classifier(x, num_outputs, layer_sizes):
+    
+    for layer_size in layer_sizes:
+        if len(layer_size) == 1:
+            x = layers.Dense(layer_size[0], activation='relu')(x)
+        else:
+            x = layers.Dropout(layer_size[0])(x)
+            x = layers.Dense(layer_size[1], activation='relu')(x)
+    
+    return layers.Dense(num_outputs, activation='softmax')(x)
 
-
-def init_pretrained_xception(num_outputs, input_shape):
-    # create the base pre-trained model
-    base_model = Xception(
-        weights='imagenet', include_top=False, input_shape=input_shape,
+def freeze_layers(model, n_layers):
+    if n_layers is not None or n_layers == 0:
+        for layer in model.layers[:n_layers]:
+            layer.trainable = False
+        for layer in model.layers[n_layers:]:
+            layer.trainable = True
+    
+def xception(input_shape, frozen_layers=0, weights=None, pooling='avg', **kwargs):
+    # create the base model
+    base_model = keras_xception.Xception(
+        weights=weights, include_top=False, input_shape=input_shape,
+        pooling=pooling
     )
+    predictions = add_classifier(base_model.output, **kwargs)
+    model = models.Model(inputs=base_model.input, outputs=predictions)
     
-    # add a global spatial average pooling layer
-    x = base_model.output
-    x = layers.GlobalAveragePooling2D()(x)
+    # Freeze some layers:
+    freeze_layers(model, frozen_layers)
     
-    # let's add a fully-connected layer
-    x = layers.Dropout(0.3)(x)
-    x = layers.Dense(512, activation='relu')(x)
-    x = layers.Dropout(0.3)(x)
-    x = layers.Dense(num_outputs, activation='relu')(x)
-    
-    # and a softmax layer
-    predictions = layers.Dense(num_outputs, activation='softmax')(x)
-    
-    # this is the model we will train
-    return models.Model(inputs=base_model.input, outputs=predictions)
+    return model
 
+def xception_preprocess_input(*args, **kwargs):
+    return keras_xception.preprocess_input(*args, **kwargs)
+
+def vgg16(input_shape, frozen_layers=0, weights=None, pooling='avg', **kwargs):
+    # create the base model
+    base_model = keras_vgg16.VGG16(
+        weights=weights, include_top=False, input_shape=input_shape,
+        pooling=pooling
+    )
+    predictions = add_classifier(base_model.output, **kwargs)
+    model = models.Model(inputs=base_model.input, outputs=predictions)
+    
+    # Freeze some layers:
+    freeze_layers(model, frozen_layers)
+    
+    return model
+
+def vgg16_preprocess_input(*args, **kwargs):
+    return keras_vgg16.preprocess_input(*args, **kwargs)
 
 def init_baseline(num_outputs, input_shape):
     inputs = layers.Input(input_shape)

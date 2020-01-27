@@ -1,0 +1,36 @@
+augmentation: false
+balance_training_data: false
+batch_size: 32
+classes:
+- cassava
+- groundnut
+- maize
+- sweet_potatoes
+- tobacco
+model: vgg16
+model_options:
+  frozen_layers: 0
+  input_shape: !!python/tuple
+  - 299
+  - 299
+  - 3
+  layer_sizes:
+  - - 0.3
+    - 64
+  - - 0.3
+    - 32
+  num_outputs: 5
+  weights: null
+name: cl2-small-vgg16-test
+optimizer: SGD
+optimizer_options:
+  lr: 0.015
+results_dir: /scratch-a/jmrziglod/sen2agri/results/
+training_epochs: 40
+training_folds:
+- /home/jmrziglod/projects/sen2agri/drone-crop-type/train_test_split/train.yaml
+training_steps: 300
+validation_folds:
+- /home/jmrziglod/projects/sen2agri/drone-crop-type/train_test_split/test.yaml
+validation_steps: null
+verbose: 2

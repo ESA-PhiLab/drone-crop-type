@@ -1,0 +1,14 @@
+- 
+  path: /scratch-a/jmrziglod/sen2agri/data/malawi_summer/patches/original/*
+  prefixes:
+  - m8
+  - m14
+  - m25
+  - m29
+- 
+  path: /scratch-a/jmrziglod/sen2agri/data/malawi_summer/patches/augmented/*
+  prefixes:
+  - m8
+  - m14
+  - m25
+  - m29

@@ -1,0 +1,31 @@
+augmentation: false
+balance_training_data: true
+batch_size: 24
+classes:
+- cassava
+- groundnut
+- maize
+- other
+- sweet_potatoes
+- tobacco
+model: xception
+model_options:
+  frozen_layers: 95
+  input_shape:
+  - 299
+  - 299
+  - 3
+  num_outputs: 6
+name: sgd-bb-xception-f95-3
+optimizer: SGD
+optimizer_options:
+  lr: 0.005
+results_dir: /scratch-a/jmrziglod/sen2agri/results/
+training_epochs: 40
+training_folds:
+- /home/jmrziglod/projects/sen2agri/drone-crop-type/folds/2.yaml
+- /home/jmrziglod/projects/sen2agri/drone-crop-type/folds/1.yaml
+training_steps: 1000
+validation_folds:
+- /home/jmrziglod/projects/sen2agri/drone-crop-type/folds/3.yaml
+validation_steps: null
