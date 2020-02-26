@@ -1,6 +1,6 @@
 """Train a CNN on the patches extracted from the drone mosaics
 
-To set the paths to the patches, please create your own configurations file
+To create the CONFIG_FILE, please use create_config
 
 Usage:
     > python train.py CONFIG_FILE
