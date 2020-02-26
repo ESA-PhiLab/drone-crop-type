@@ -1,0 +1,38 @@
+augmentation: false
+balance_training_data: false
+batch_size: 32
+class_mapping: false
+classes:
+- cassava
+- groundnut
+- maize
+- other
+- sweet_potatoes
+- tobacco
+model: vgg16
+model_options:
+  frozen_layers: 7
+  input_shape: !!python/tuple
+  - 224
+  - 224
+  - 3
+  layer_sizes:
+  - - 0.3
+    - 60
+  - - 0.3
+    - 30
+  num_outputs: 6
+  weights: imagenet
+name: paper/vgg16_l2_ls60_lr0.02_d0.3_fl7_test-prop
+optimizer: SGD
+optimizer_options:
+  lr: 0.02
+results_dir: /scratch-a/jmrziglod/sen2agri/results/
+training_epochs: 50
+training_folds:
+- /home/jmrziglod/projects/sen2agri/drone-crop-type/folds/artur-prop/train.yaml
+training_steps: 350
+validation_folds:
+- /home/jmrziglod/projects/sen2agri/drone-crop-type/folds/artur-prop/test-prop.yaml
+validation_steps: null
+verbose: 2

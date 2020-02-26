@@ -9,27 +9,40 @@ import yaml
 
 folds_dir = sys.argv[1]
 results_dir = sys.argv[2]
-prefix = None if len(sys.argv) < 4 else sys.argv[3]
+prefix = "" if len(sys.argv) < 4 else sys.argv[3]
 selection = None if len(sys.argv) < 5 else sys.argv[4]
 
 config_dir = "configs"
-if prefix is not None:
+if prefix:
     config_dir = join(config_dir, prefix)
 
-classes = ['cassava', 'groundnut', 'maize', 'sweet_potatoes', 'tobacco']
-#classes = ['cassava', 'groundnut', 'maize', 'other', 'sweet_potatoes', 'tobacco']
+class_mapping = False
+# classes = ['cassava', 'groundnut', 'maize', 'tobacco']
+# classes = ['cassava', 'groundnut', 'maize', 'sweet_potatoes', 'tobacco']
+classes = ['cassava', 'groundnut', 'maize', 'other', 'sweet_potatoes', 'tobacco']
+# classes = ['crop', 'non-crop']
+# class_mapping = {
+#         'cassava': 'crop', 
+#         'groundnut': 'crop', 
+#         'maize': 'crop', 
+#         'other': 'non-crop', 
+#         'sweet_potatoes': 'crop', 
+#         'tobacco': 'crop'
+#     }
 
 base = {
     'optimizer': 'SGD',
-    'optimizer_options': {},
+    'optimizer_options': {
+        'lr': 0.0003
+    },
     'model': None,
     'model_options': {
         'frozen_layers': 0,
         'num_outputs': len(classes),
-        'input_shape': (299, 299, 3),
+        'input_shape': (224, 224, 3),
         'layer_sizes': [
-            [0.5, 32],
-            [0.3, 16],
+            [0.3, 60],
+            [0.3, 30],
         ],
         'weights': None,
     },
@@ -37,11 +50,12 @@ base = {
     'validation_folds': None,
     'results_dir': results_dir,
     'balance_training_data': False,
-    'augmentation': False,
+    'augmentation': True,
     'classes': classes,
+    'class_mapping': class_mapping,
     'batch_size': 32,
-    'training_epochs': 40,
-    'training_steps': 300,
+    'training_epochs': 50,
+    'training_steps': 350,
     'validation_steps': None,
     'verbose': 2,
 }
@@ -69,25 +83,43 @@ experiments['xception-f95'] = {
 experiments['vgg16'] = {
     **deepcopy(base),
     'model': 'vgg16',
-    'optimizer_options': {
-        **base['optimizer_options'],
-        'lr': 0.015
-    },
 }
 
-experiments['vgg16-f15'] = {
-    **deepcopy(base),
-    'model': 'vgg16',
-    'model_options': {
-        **base['model_options'],
-        'frozen_layers': 15,
-        'weights': 'imagenet',
-    },
-    'optimizer_options': {
-        **base['optimizer_options'],
-        'lr': 0.001
-    },
-}
+# VGG-16 layer names
+# 0 input_1
+# 1 block1_conv1
+# 2 block1_conv2
+# 3 block1_pool
+# 4 block2_conv1
+# 5 block2_conv2
+# 6 block2_pool
+# 7 block3_conv1
+# 8 block3_conv2
+# 9 block3_conv3
+# 10 block3_pool
+# 11 block4_conv1
+# 12 block4_conv2
+# 13 block4_conv3
+# 14 block4_pool
+# 15 block5_conv1
+# 16 block5_conv2
+# 17 block5_conv3
+# 18 block5_pool
+# 19 flatten
+# 20 fc1
+# 21 fc2
+# 22 predictions
+
+for fl in [0, 2, 4, 7, 11, 15, 18]:
+    experiments[f'vgg16-f{fl}'] = {
+        **deepcopy(base),
+        'model': 'vgg16',
+        'model_options': {
+            **base['model_options'],
+            'frozen_layers': fl,
+            'weights': 'imagenet',
+        },
+    }
 
 os.makedirs(config_dir, exist_ok=True)
 
@@ -98,12 +130,21 @@ for validation_fold in fold_files:
     validation_fold_id = basename(validation_fold).replace('.yaml', '')
     
     for name, experiment in experiments.items():
-        full_name = "-".join([name, validation_fold_id])
-        if prefix is None:
-            experiment['name'] = full_name
-        else:
-            experiment['name'] = prefix + "-" + full_name
+        name = "_".join([
+            experiment['model'],
+            f"l{len(experiment['model_options']['layer_sizes'])}",
+            f"ls{experiment['model_options']['layer_sizes'][0][1]}",
+            f"lr{experiment['optimizer_options']['lr']}",
+            f"d{experiment['model_options']['layer_sizes'][0][0]}",
+            f"fl{experiment['model_options']['frozen_layers']}",
+            validation_fold_id
+        ])
+        if prefix:
+            experiment['name'] = join(prefix, name)
+        
         experiment['training_folds'] = training_folds
         experiment['validation_folds'] = [validation_fold]
-        with open(join(config_dir, full_name)+'.yml', 'w') as outfile:
+        
+        print('Create', join(config_dir, name)+'.yml')
+        with open(join(config_dir, name)+'.yml', 'w') as outfile:
             yaml.dump(experiment, outfile, default_flow_style=False)

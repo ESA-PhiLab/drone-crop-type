@@ -6,15 +6,18 @@ Usage:
     > python train.py CONFIG_FILE
 """
 
-from glob import glob
+from glob import glob, iglob
 import os
-from os.path import basename, dirname, join
+from os.path import basename, dirname, exists, join
 from pprint import pprint
 import sys
 from time import time
 
+from ai4eo.preprocessing import ImageLoader
 import numpy as np
 from imgaug import augmenters as iaa
+from imgaug import parameters as iap
+import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from tensorflow.keras import callbacks, optimizers
@@ -22,15 +25,17 @@ from tensorflow.python.ops import summary_ops_v2
 import tensorflow as tf
 import yaml
 
-from ai4eo.preprocessing import ImageLoader
 import models
+from utils import plot_confusion_matrix
 
 class AdvancedMetrics(callbacks.Callback):
-    def __init__(self, logdir, data_generator):
+    def __init__(self, logdir, plotdir, data_generator, classes):
         super().__init__()
         self.data_generator = data_generator
         self.logdir = logdir
+        self.plotdir = plotdir
         self.logstep = 0
+        self.classes = classes
         return
     
     def on_train_begin(self, logs={}):
@@ -50,49 +55,96 @@ class AdvancedMetrics(callbacks.Callback):
             
             x, y_t = next(gen)
             y_p = self.model.predict_on_batch(x)
-            y_t = np.argmax(y_t,axis=-1).ravel()
-            y_p = np.argmax(y_p,axis=-1).ravel()
+            
+            if len(self.classes) > 2:
+                y_t = np.argmax(y_t,axis=-1).ravel()
+                y_p = np.argmax(y_p,axis=-1).ravel()
+            else:
+                y_t = np.squeeze(y_t)
+                y_p = (np.squeeze(y_p) > 0.5).astype(int)
+            
             y_true[i*y_t.size:(i+1)*y_t.size] = y_t
             y_pred[i*y_p.size:(i+1)*y_p.size] = y_p
     
-        accuracy = accuracy_score(y_true,y_pred)
+        filename = join(self.logdir, "validation.csv")
+        if exists(filename):
+            df = pd.read_csv(filename)
+        else:
+            df = pd.DataFrame(columns=['step', 'f1', 'precision', 'recall', 'accuracy', 'f1_weighted', 'precision_weighted', 'recall_weighted'])
+        metric = {k: 0 for k in df.columns}
+        metric['step'] = self.logstep
+    
+        accuracy = accuracy_score(y_true, y_pred)
         precision,recall,f1,_ = precision_recall_fscore_support(y_true, y_pred, average='macro')
+        metric['precision'] = precision
+        metric['recall'] = recall
+        metric['f1'] = f1
+        metric['accuracy'] = accuracy
         with writer.as_default():
             tf.summary.scalar('accuracy', accuracy, step=self.logstep)
             tf.summary.scalar('precision', precision, step=self.logstep)
             tf.summary.scalar('recall', recall, step=self.logstep)
             tf.summary.scalar('f1', f1, step=self.logstep)
-            
-        print("\n val_f1: {:.3f} — val_pre: {:.3f} — val_rec {:.3f}".format(
-            f1, precision, recall
-        ))
+        print(f"\nValidation: f1: {f1:.3f} — pre: {precision:.3f} — rec {recall:.3f}")
+        cm_title_1 = f"[macro] f1: {f1:.2f} — pre: {precision:.2f} — rec {recall:.2f}"
+        
+        precision,recall,f1,_ = precision_recall_fscore_support(y_true, y_pred, average='weighted')
+        metric['precision_weighted'] = precision
+        metric['recall_weighted'] = recall
+        metric['f1_weighted'] = f1
+        with writer.as_default():
+            tf.summary.scalar('weighted_precision', precision, step=self.logstep)
+            tf.summary.scalar('weighted_recall', recall, step=self.logstep)
+            tf.summary.scalar('weighted_f1', f1, step=self.logstep)
+        print(f"\n weighted: f1: {f1:.3f} — pre: {precision:.3f} — rec {recall:.3f}")
+        cm_title_2 = f"[weighted] f1: {f1:.2f} — pre: {precision:.2f} — rec {recall:.2f}"
+        
+        os.makedirs(self.plotdir, exist_ok=True)
+        fig, ax = plt.subplots(ncols=2, figsize=(12, 12))
+        plot_confusion_matrix(y_true, y_pred, self.classes, ax=ax[0], title=cm_title_1)
+        plot_confusion_matrix(y_true, y_pred, self.classes, ax=ax[1], title=cm_title_2, normalize=True)
+        fig.tight_layout()
+        fig.savefig(join(self.plotdir, f'cm_{int(self.logstep/(steps*self.data_generator.batch_size)):03d}.png'))
+        plt.close(fig)
+        
+        df = df.append(metric, ignore_index=True)
+        df.to_csv(filename, index=False)
+        
         return
 
+    
+def parse_fold(fold):
+    if "prefixes" in fold:
+        for prefix in fold['prefixes']:
+            for image in glob(join(fold['path'], prefix)):
+                yield basename(dirname(image)), image
+    else:
+        for image in glob(fold['path']):
+            yield basename(dirname(image)), image
 
-def get_patches(filenames, classes):
+def get_patches(filenames, class_mapping):
     folds = []
     for filename in filenames:
         with open(filename) as file:
             folds.extend(yaml.safe_load(file))
     
     labels, images = zip(*[
-        (basename(dirname(image)), image)
+        (class_mapping[label], image)
         for fold in folds
-        for prefix in fold['prefixes']
-        for image in glob(join(fold['path'], prefix)+'_*.png')
-        if basename(dirname(image)) in classes
+        for label, image in parse_fold(fold)
+        if label in class_mapping
     ])
+    
     return images, labels
 
     
 def train(config):
     # Just in case if we need a on-the-fly augmentator
     augmentator = iaa.SomeOf((0, None), [
-        iaa.Add((-20, 20)),
-        iaa.Crop(percent=(0, 0.02)),
+        iaa.Add((-40, 40)),
         iaa.Affine(
             scale=(0.7, 1.3),
-            rotate=(-20, 20), mode='reflect'),
+            rotate=iap.Choice([0, 90, 180, -90]), mode='reflect'),
         iaa.Fliplr(0.25), # horizontally flip 25% of the images
         iaa.Flipud(0.25),
         # Strengthen or weaken the contrast in each image.
@@ -100,9 +152,13 @@ def train(config):
         iaa.GaussianBlur(sigma=(0, 0.8)), # blur images with a sigma of 0 to 3.0
     ])
     
+    # set a default class mapping:
+    if not config['class_mapping']:
+        config['class_mapping'] = {k: k for k in config['classes']}
+    
     preprocess_input = getattr(models, config['model']+'_preprocess_input')
-
-    train_images, train_labels = get_patches(config['training_folds'], config['classes'])
+    
+    train_images, train_labels = get_patches(config['training_folds'], config['class_mapping'])
     train_loader = ImageLoader(
         images=train_images, 
         labels=train_labels,
@@ -110,33 +166,22 @@ def train(config):
         balance=config['balance_training_data'],
         preprocess_input=preprocess_input,
         classes=config['classes'],
+        label_encoding='binary',
         batch_size=config['batch_size'],
     )
-    val_images, val_labels = get_patches(config['validation_folds'], config['classes'])
+    val_images, val_labels = get_patches(config['validation_folds'], config['class_mapping'])
     val_loader = ImageLoader(
         images=val_images, 
         labels=val_labels,
         preprocess_input=preprocess_input,
         classes=config['classes'],
+        label_encoding='binary',
         batch_size=config['batch_size'],
     )
 
     print('Training samples:', len(train_images))
     print('Validation samples:', len(val_images))
-    import numpy as np
-#     for _, labels in train_loader:
-#         print(np.unique(np.argmax(labels, axis=-1), return_counts=True))
-
-    # Let's set our own class weights:
-    # data.class_weights = {
-    #     0: 8., # cassava
-    #     1: 5, # groundnut
-    #     2: 1.2, # maize
-    #     3: 1.0, # other
-    #     4: 15, # sweetpotatoes
-    #     5: 7.0 # tobacco
-    # }
-
+    
     os.makedirs(config['results_dir'], exist_ok=True)
 
     # Load the model architecture:
@@ -146,21 +191,25 @@ def train(config):
 
     optimizer = getattr(optimizers, config['optimizer'])(**config['optimizer_options'])
 
-    model.compile(
-        loss='categorical_crossentropy',
-        metrics=['categorical_accuracy'],
-        optimizer=optimizer
-    )
-    
-    for i, layer in enumerate(model.layers):
-        print(i, layer.name)
+    if len(config['classes']) == 2:
+        model.compile(
+            loss='binary_crossentropy',
+            metrics=['binary_accuracy'],
+            optimizer=optimizer
+        )
+    else:
+        model.compile(
+            loss='categorical_crossentropy',
+            metrics=['categorical_accuracy'],
+            optimizer=optimizer
+        )
     print(model.summary())
 
     callback_list = [
-        callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-        ),
+#         callbacks.EarlyStopping(
+#             monitor='val_loss',
+#             patience=30,
+#         ),
         callbacks.TensorBoard(
             log_dir=join(config['results_dir'], 'tb_logs', config['name']), histogram_freq=0,
             write_graph=False, write_images=False,
@@ -186,7 +235,8 @@ def train(config):
         ),
         AdvancedMetrics(
             logdir=join(config['results_dir'], 'tb_logs', config['name']),
-            data_generator=val_loader,
+            plotdir=join(config['results_dir'], 'plots', config['name']),
+            data_generator=val_loader, classes=config['classes']
         )
     ]
 
@@ -210,20 +260,6 @@ def train(config):
     model.save_weights(join(model_dir, 'best.h5'))
     with open(join(model_dir, 'config.yml'), 'w') as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
-
-    # print('Results on validation dataset:', experiment_name)
-    # model.evaluate(
-    #     data.validation, classes,
-    #     results_file=join(experiment_dir, 'results-validation.json'),
-    #     plot_file=join(experiment_dir, 'results-validation.png'),
-    # )
-
-    # print('Results on testing dataset:', experiment_name)
-    # model.evaluate(
-    #     data.testing, classes,
-    #     results_file=join(experiment_dir, 'results-testing.json'),
-    #     plot_file=join(experiment_dir, 'results-testing.png'),
-    # )
 
 
 if __name__ == '__main__':
