@@ -113,26 +113,32 @@ class AdvancedMetrics(callbacks.Callback):
         return
 
     
-def parse_fold(fold):
-    if "prefixes" in fold:
-        for prefix in fold['prefixes']:
-            for image in glob(join(fold['path'], prefix)):
-                yield basename(dirname(image)), image
-    else:
-        for image in glob(fold['path']):
-            yield basename(dirname(image)), image
+# def parse_fold(fold):
+#     if "path" in fold:
+#         placeholder = list(set(re.findall(r"{(\w+)}", fold['path'])))
+#         if placeholder:
+#             for image in glob(fold['path'].format(placeholder), prefix)):
+#                 yield basename(dirname(image)), image
+#         else:
+#             for image in glob(fold['path']):
+#                 yield 
 
-def get_patches(filenames, class_mapping):
+def get_patches(fold_files, class_mapping):
     folds = []
-    for filename in filenames:
-        with open(filename) as file:
-            folds.extend(yaml.safe_load(file))
+    for fold_file in fold_files:
+        with open(fold_file) as file:
+            this_fold = []
+            for line in file.readlines():
+                if "*" in line:
+                    this_fold.extend(glob(line))
+                else:
+                    this_fold.append(line)
+            folds.extend(this_fold)
     
     labels, images = zip(*[
-        (class_mapping[label], image)
-        for fold in folds
-        for label, image in parse_fold(fold)
-        if label in class_mapping
+        (class_mapping[basename(dirname(image))], image)
+        for image in folds
+        if basename(dirname(image)) in class_mapping
     ])
     
     return images, labels

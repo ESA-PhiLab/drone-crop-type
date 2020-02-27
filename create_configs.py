@@ -17,9 +17,11 @@ if prefix:
     config_dir = join(config_dir, prefix)
 
 class_mapping = False
+
+# Malawi Summer classes:
 # classes = ['cassava', 'groundnut', 'maize', 'tobacco']
 # classes = ['cassava', 'groundnut', 'maize', 'sweet_potatoes', 'tobacco']
-classes = ['cassava', 'groundnut', 'maize', 'other', 'sweet_potatoes', 'tobacco']
+# classes = ['cassava', 'groundnut', 'maize', 'other', 'sweet_potatoes', 'tobacco']
 # classes = ['crop', 'non-crop']
 # class_mapping = {
 #         'cassava': 'crop', 
@@ -29,6 +31,9 @@ classes = ['cassava', 'groundnut', 'maize', 'other', 'sweet_potatoes', 'tobacco'
 #         'sweet_potatoes': 'crop', 
 #         'tobacco': 'crop'
 #     }
+
+# Mozambique classes:
+classes = ['cassava', 'maize', 'other', 'rice']
 
 base = {
     'optimizer': 'SGD',
@@ -80,7 +85,7 @@ experiments['xception-f95'] = {
     },
 }
 
-experiments['vgg16'] = {
+experiments['vgg16-vanilla'] = {
     **deepcopy(base),
     'model': 'vgg16',
 }
@@ -130,8 +135,11 @@ for validation_fold in fold_files:
     validation_fold_id = basename(validation_fold).replace('.yaml', '')
     
     for name, experiment in experiments.items():
+        _name = experiment['model']
+        if experiment['model_options']['weights'] is None:
+            _name += "_vanilla" 
         name = "_".join([
-            experiment['model'],
+            _name,
             f"l{len(experiment['model_options']['layer_sizes'])}",
             f"ls{experiment['model_options']['layer_sizes'][0][1]}",
             f"lr{experiment['optimizer_options']['lr']}",
