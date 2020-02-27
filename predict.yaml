@@ -1,0 +1,15 @@
+mosaics: /path/to/mosaics/m*.tif
+output_path: /path/to/empty/folder
+input_shape: [224, 224]
+cropland-model:
+    path: /path/to/model/file
+    preprocess_input: 'vgg16'
+    # Threshold of 0.6, i.e. we rather throw away real 
+    # cropland samples than keeping non-cropland ones 
+    threshold: 0.6
+    batch_size: 32
+croptypes-model:
+    path: /path/to/model/file
+    preprocess_input: 'vgg16'
+    batch_size: 32
+    classes: ['cassava', 'groundnut', 'maize', 'tobacco']

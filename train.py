@@ -7,6 +7,7 @@ Usage:
 """
 
 from glob import glob, iglob
+import json
 import os
 from os.path import basename, dirname, exists, join
 from pprint import pprint
@@ -128,7 +129,7 @@ def get_patches(fold_files, class_mapping):
     for fold_file in fold_files:
         with open(fold_file) as file:
             this_fold = []
-            for line in file.readlines():
+            for line in map(lambda s: s.strip(), file.readlines()):
                 if "*" in line:
                     this_fold.extend(glob(line))
                 else:
@@ -211,33 +212,40 @@ def train(config):
         )
     print(model.summary())
 
+    model_dir = join(config['results_dir'], 'models', config['name'])
+    os.makedirs(model_dir, exist_ok=True)
+    with open(join(model_dir, 'config.yml'), 'w') as outfile:
+        yaml.dump(config, outfile, default_flow_style=False)
+    with open(join(model_dir, 'model.json'), 'w') as outfile:
+        json.dump(model.to_json(), outfile)
+        
     callback_list = [
-#         callbacks.EarlyStopping(
-#             monitor='val_loss',
-#             patience=30,
-#         ),
+        callbacks.EarlyStopping(
+            monitor='val_loss',
+            patience=15,
+        ),
         callbacks.TensorBoard(
             log_dir=join(config['results_dir'], 'tb_logs', config['name']), histogram_freq=0,
             write_graph=False, write_images=False,
         ),
-#         callbacks.ReduceLROnPlateau(
-#             monitor='val_loss',
-#             factor=0.5,
-#             patience=3,
-#             verbose=1,
-#             mode='auto',
-#             min_delta=0.00002,
-#             cooldown=0,
-#             min_lr=0.00002
-#         ),
+        callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=5,
+            verbose=1,
+            mode='auto',
+            min_delta=0.00002,
+            cooldown=0,
+            min_lr=0.00002
+        ),
         callbacks.ModelCheckpoint(
-            join(config['results_dir'], 'models', config['name']),
+            join(model_dir, 'checkpoint'),
             monitor='val_loss',
             verbose=0,
             save_best_only=True,
             save_weights_only=True,
             mode='auto',
-            period=1
+            save_freq='epoch'
         ),
         AdvancedMetrics(
             logdir=join(config['results_dir'], 'tb_logs', config['name']),
@@ -259,14 +267,6 @@ def train(config):
     #     class_weight=class_weights,
         verbose=config['verbose'],
     )
-
-    print("Save model...")
-    model_dir = join(config['results_dir'], 'models', config['name'])
-    os.makedirs(model_dir, exist_ok=True)
-    model.save_weights(join(model_dir, 'best.h5'))
-    with open(join(model_dir, 'config.yml'), 'w') as outfile:
-        yaml.dump(config, outfile, default_flow_style=False)
-
 
 if __name__ == '__main__':
     # Load the config file:

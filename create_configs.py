@@ -3,6 +3,7 @@ from glob import glob
 import sys
 import os
 from os.path import abspath, basename, join
+from pathlib import Path
 
 import yaml
 
@@ -19,7 +20,7 @@ if prefix:
 class_mapping = False
 
 # Malawi Summer classes:
-# classes = ['cassava', 'groundnut', 'maize', 'tobacco']
+classes = ['cassava', 'groundnut', 'maize', 'tobacco']
 # classes = ['cassava', 'groundnut', 'maize', 'sweet_potatoes', 'tobacco']
 # classes = ['cassava', 'groundnut', 'maize', 'other', 'sweet_potatoes', 'tobacco']
 # classes = ['crop', 'non-crop']
@@ -28,12 +29,12 @@ class_mapping = False
 #         'groundnut': 'crop', 
 #         'maize': 'crop', 
 #         'other': 'non-crop', 
-#         'sweet_potatoes': 'crop', 
+#         'sweet_potatoes': 'non-crop', 
 #         'tobacco': 'crop'
 #     }
 
 # Mozambique classes:
-classes = ['cassava', 'maize', 'other', 'rice']
+# classes = ['cassava', 'maize', 'other', 'rice']
 
 base = {
     'optimizer': 'SGD',
@@ -44,7 +45,7 @@ base = {
     'model_options': {
         'frozen_layers': 0,
         'num_outputs': len(classes),
-        'input_shape': (224, 224, 3),
+        'input_shape': (299, 299, 3),
         'layer_sizes': [
             [0.3, 60],
             [0.3, 30],
@@ -55,7 +56,7 @@ base = {
     'validation_folds': None,
     'results_dir': results_dir,
     'balance_training_data': False,
-    'augmentation': True,
+    'augmentation': False,
     'classes': classes,
     'class_mapping': class_mapping,
     'batch_size': 32,
@@ -132,7 +133,7 @@ fold_files = glob(join(abspath(folds_dir), "*"))
 for validation_fold in fold_files:
     training_folds = fold_files.copy()
     training_folds.remove(validation_fold)
-    validation_fold_id = basename(validation_fold).replace('.yaml', '')
+    validation_fold_id = Path(validation_fold).stem
     
     for name, experiment in experiments.items():
         _name = experiment['model']
@@ -153,6 +154,6 @@ for validation_fold in fold_files:
         experiment['training_folds'] = training_folds
         experiment['validation_folds'] = [validation_fold]
         
-        print('Create', join(config_dir, name)+'.yml')
+        print('python train.py', join(config_dir, name)+'.yml')
         with open(join(config_dir, name)+'.yml', 'w') as outfile:
             yaml.dump(experiment, outfile, default_flow_style=False)
