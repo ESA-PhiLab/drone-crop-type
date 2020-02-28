@@ -3,27 +3,29 @@
 Before using this script, you should have
 * a config file in yaml format (see below)
 * two trained keras models (one for cropland identification and one for crop types)
+* two free GPUs available (e.g. use export CUDA_VISIBLE_DEVICES=0,1)
 
-How does it work? For each mosaic, the cropland model will predict a score (0: no-cropland, 1: cropland). 
+How does it work? For each mosaic, the cropland model will predict a score (0: no-cropland, 1: cropland).
 If the score is higher than cropland-model:threshold, the croptypes model predicts the crop type for it.
 
 Usage:
     > python predict.py CONFIG_FILE.yaml
-    
+
 Please provide your own CONFIG_FILE in yaml format. It should look like this:
 
 ```
 mosaics: /path/to/mosaics/m*.tif
 output_path: /path/to/empty/folder
-input_shape: [224, 224]
-cropland-model:
+patch_size: 299
+config['stride']: 299
+cropland_model:
     path: /path/to/model/file
     preprocess_input: 'vgg16'
-    # Threshold of 0.6, i.e. we rather throw away real 
-    # cropland samples than keeping non-cropland ones 
+    # Threshold of 0.6, i.e. we rather throw away real
+    # cropland samples than keeping non-cropland ones
     threshold: 0.6
     batch_size: 32
-croptypes-model:
+croptypes_model:
     path: /path/to/model/file
     preprocess_input: 'vgg16'
     batch_size: 32
@@ -38,7 +40,8 @@ from os.path import join, dirname, basename
 import sys
 from pathlib import Path
 
-from tensorflow.keras.models import from_json, load_model
+import tensorflow as tf
+from tensorflow.keras.models import model_from_json, load_model
 from tensorflow.keras.utils import Sequence
 import geopandas
 import numpy as np
@@ -49,80 +52,118 @@ import yaml
 
 import models
 
-class BigImageLoader(Sequence):
-    def __init__(self, image):
-        self.image = rio.open(mosaic_file)
-        
-    def __len__(self):
-        return len(self.images) // self.batch_size
+def create_model(path, gpu=0):
+    print(f'[GPU {gpu}] Loading model from', path)
+    with tf.device(f'/device:GPU:{gpu}'):
+        g = tf.Graph()
+        with g.as_default():
+            with open(join(path, 'model.json'), 'r') as json_file:
+                model = model_from_json(json.load(json_file))
+            model.load_weights(join(config['cropland_model']['path'], 'checkpoint'))
+    return g, model
 
-    def __getitem__(self, idx):
-        if self._weights is None:
-            sample_ids = \
-                self._indices[idx*self.batch_size:(idx+1)*self.batch_size]
-        return self.get_samples(sample_ids)
+def add_predictions(df, predictions, mosaic):
+    sorted_indices = np.argsort(predictions, axis=1)
+    
+    for i in range(batch_predictions.shape[0]):
+        window = windows[i]
+        polygon = Polygon((
+            mosaic.xy(window.row_off, window.col_off),
+            mosaic.xy(window.row_off, window.col_off + window.width),
+            mosaic.xy(window.row_off + window.height, window.col_off + window.width),
+            mosaic.xy(window.row_off + window.height, window.col_off),
+        ))
         
-    def get_batch(self, ):
-        nx_windows = (self.image.width // input_size) + 1
-        ny_windows = (self.image.height // input_size) + 1
-        batch = []
-        windows = []
-        for x in range(x_windows):
-            for y in range(y_windows):
-                window = Window(input_size*x, input_size*y, input_size, input_size)
-                image = mosaic.read(window=window)
-                # Missing values are indicated as a 0 value in the alpha channel
-                if 0 in image.shape or 0 in image[3, :]:
-                    continue
-                # We need to preprocess the image first:
-                image = self._preprocess_input(image[:3, ...].T)
-                batch.append(image)
-                windows.append(window)
-                if len(batch) >= batch_size:
-                    yield np.array(batch)
-                    batch.clear()
-                    windows.clear()
-
-# join(model_dir, 'checkpoint')
+        label_1 = config['classes'][sorted_indices[i, -1]]
+        label_2 = config['classes'][sorted_indices[i, -2]]
+        confidence_1 = predictions[i, sorted_indices[i, -1]]
+        confidence_2 = predictions[i, sorted_indices[i, -2]]
+        
+        df = df.append({
+            'column': window.col_off,
+            'row': window.row_off,
+            'label_1': label_1,
+            'conf_1': confidence_1,
+            'label_2': label_2, 
+            'conf_2': confidence_2,
+            'geometry': polygon,
+        }, ignore_index=True)
+        
+    return df
 
 config_file = sys.argv[1]
 with open(config_file) as file:
     config = yaml.safe_load(file)
     
+os.makedirs(config['output_path'], exist_ok=True)
+    
+# Available gpus:
+gpus = tf.config.experimental.list_logical_devices('GPU')
+cropland_graph, cropland_model = create_model(config['cropland_model']['path'], gpu=0)
+# croptypes_graph, croptypes_model = create_model(config['croptypes_model']['path'], gpu=1)
+    
 for mosaic_file in glob(config['mosaics']):
     mosaic_id = Path(mosaic_file).stem
-    
-    print('Processing', mosaic_id)
-    
-    with rio.open(mosaic_file) as mosaic:
-        predictions = geopandas.GeoDataFrame(
-            columns=['LC', 'CODE', 'CONF_1', 'LC_2', 'CONF_2', 'CROP', 'CropType', 'CropType_l', 'COLUMN', 'ROW'],
-        )
-        x_windows = (mosaic.width // input_size) + 1
-        y_windows = (mosaic.height // input_size) + 1
-        batch = []
-        windows = []
-        for x in range(x_windows):
-            for y in range(y_windows):
-                window = Window(input_size*x, input_size*y, input_size, input_size)
-                image = mosaic.read(window=window)
-                # Missing values are indicated as a 0 value in the alpha channel
-                if 0 in image.shape or 0 in image[3, :]:
-                    continue
-                # We need to preprocess the image first:
-                image = preprocess_input(image[:3, ...].T)
-                batch.append(image)
-                windows.append(window)
-                if len(batch) >= batch_size:
-                    batch_predictions = model.predict_on_batch(np.array(batch))
-                    predictions = add_predictions(
-                        predictions, batch_predictions, mosaic, windows
-                    )
-                    batch.clear()
-                    windows.clear()
-    except:
-        print('error with', mosaic_id)
 
-    predictions_filename = config['predictions_path'].format(model=model_name, mosaic=mosaic_id)
-    os.makedirs(dirname(predictions_filename), exist_ok=True)
-    predictions.to_file(predictions_filename)
+    print('Processing', mosaic_id)
+
+    # Load cropland model
+    ...
+
+    predictions = geopandas.GeoDataFrame(
+        columns=['LC', 'CODE', 'CONF_1', 'LC_2', 'CONF_2', 'CROP', 'CropType', 'CropType_l', 'COLUMN', 'ROW'],
+    )
+    with rio.open(mosaic_file) as mosaic:
+        image = np.moveaxis(mosaic.read(), 0, -1)
+        
+    print(image.shape)
+
+    n_x = (image.shape[0] - config['patch_size']) // config['stride'] + 1
+    n_y = (image.shape[1] - config['patch_size']) // config['stride'] + 1
+    step_x = config['stride']
+    step_y = config['stride']
+    # pre-allocated for efficiency
+    patches = np.empty((
+                            n_x * n_y,
+                            config['patch_size'],
+                            config['patch_size'],
+                            3
+                            ))
+    patch_ids = []
+    num_valid_patches = 0
+    for col in range(n_x):
+        for row in range(n_y):
+            region = slice(col * step_x, col * step_x + config['patch_size']), \
+                     slice(row * step_y, row * step_y + config['patch_size']), ...
+            patch = image[region]
+            if 0 in patch.shape or 0 in patch[..., 3]:
+                continue
+
+            # Get rid of alpha!
+            patches[num_valid_patches, ...] = patch[..., :-1]
+            patch_ids.append((col, row))
+            num_valid_patches += 1
+
+    patches = patches[:num_valid_patches, ...]
+    print(patches.shape)
+    with tf.device(f'/device:GPU:0'):
+        with cropland_graph.as_default():
+            cropland_predictions = cropland_model.predict(patches)# > config['cropland_model']['threshold']
+
+    crops = cropland_predictions < config['cropland_model']['threshold']
+    print(f'{mosaic_id} {int(crops.mean()*100)}% are crops')
+    np.save(join(config['output_path'], mosaic_id+"_cropland.npy"), cropland_predictions)
+#     np.save()
+#     sys.exit()
+    # predictions for croptypes:
+#     with tf.device(f'/device:GPU:0'):
+#         with croptypes_graph.as_default():
+#             croptyes_predictions = croptypes_model.predict(
+#                 patches[cropland_predictions]
+#             )
+#     predictions = add_predictions(
+#         predictions, batch_predictions, mosaic, windows
+#     )
+#     predictions_filename = 
+#     os.makedirs(dirname(predictions_filename), exist_ok=True)
+#     predictions.to_file(predictions_filename)

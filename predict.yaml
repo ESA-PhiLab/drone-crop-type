@@ -1,15 +1,16 @@
-mosaics: /path/to/mosaics/m*.tif
-output_path: /path/to/empty/folder
-input_shape: [224, 224]
-cropland-model:
-    path: /path/to/model/file
+mosaics: /scratch-a/jmrziglod/sen2agri/data/malawi_summer/mosaics/*.tif
+output_path: /scratch-a/jmrziglod/sen2agri/data/malawi_summer/predictions_v20200229
+patch_size: 299
+stride: 299
+cropland_model:
+    path: /scratch-a/jmrziglod/sen2agri/results/models/cropland-true/vgg16_l2_ls60_lr0.0003_d0.3_fl7_test
     preprocess_input: 'vgg16'
-    # Threshold of 0.6, i.e. we rather throw away real 
-    # cropland samples than keeping non-cropland ones 
-    threshold: 0.6
+    # Threshold of 0.6, i.e. we rather throw away real
+    # cropland samples than keeping non-cropland ones
+    threshold: 0.5
     batch_size: 32
-croptypes-model:
-    path: /path/to/model/file
+croptypes_model:
+    path: /scratch-a/jmrziglod/sen2agri/results/models/croptypes-true/vgg16_l2_ls60_lr0.0003_d0.3_fl7_test
     preprocess_input: 'vgg16'
     batch_size: 32
     classes: ['cassava', 'groundnut', 'maize', 'tobacco']

@@ -20,18 +20,18 @@ if prefix:
 class_mapping = False
 
 # Malawi Summer classes:
-classes = ['cassava', 'groundnut', 'maize', 'tobacco']
+# classes = ['cassava', 'groundnut', 'maize', 'tobacco']
 # classes = ['cassava', 'groundnut', 'maize', 'sweet_potatoes', 'tobacco']
 # classes = ['cassava', 'groundnut', 'maize', 'other', 'sweet_potatoes', 'tobacco']
-# classes = ['crop', 'non-crop']
-# class_mapping = {
-#         'cassava': 'crop', 
-#         'groundnut': 'crop', 
-#         'maize': 'crop', 
-#         'other': 'non-crop', 
-#         'sweet_potatoes': 'non-crop', 
-#         'tobacco': 'crop'
-#     }
+classes = ['crop', 'non-crop']
+class_mapping = {
+        'cassava': 'crop', 
+        'groundnut': 'crop', 
+        'maize': 'crop', 
+        'other': 'non-crop', 
+        'sweet_potatoes': 'non-crop', 
+        'tobacco': 'crop'
+    }
 
 # Mozambique classes:
 # classes = ['cassava', 'maize', 'other', 'rice']
@@ -39,7 +39,7 @@ classes = ['cassava', 'groundnut', 'maize', 'tobacco']
 base = {
     'optimizer': 'SGD',
     'optimizer_options': {
-        'lr': 0.0003
+        'lr': 0.001
     },
     'model': None,
     'model_options': {
