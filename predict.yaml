@@ -10,7 +10,7 @@ cropland_model:
     threshold: 0.5
     batch_size: 32
 croptypes_model:
-    path: /scratch-a/jmrziglod/sen2agri/results/models/croptypes-true/vgg16_l2_ls60_lr0.0003_d0.3_fl7_test
+    path: /scratch-a/jmrziglod/sen2agri/results/models/croptypes-true/vgg16_l2_ls60_lr0.0003_d0.3_fl11_test
     preprocess_input: 'vgg16'
     batch_size: 32
     classes: ['cassava', 'groundnut', 'maize', 'tobacco']

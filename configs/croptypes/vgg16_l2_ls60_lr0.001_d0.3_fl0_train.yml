@@ -1,12 +1,16 @@
 augmentation: false
 balance_training_data: false
 batch_size: 32
-class_mapping: false
+class_mapping:
+  cassava: crop
+  groundnut: crop
+  maize: crop
+  other: non-crop
+  sweet_potatoes: non-crop
+  tobacco: crop
 classes:
-- cassava
-- groundnut
-- maize
-- tobacco
+- crop
+- non-crop
 model: vgg16
 model_options:
   frozen_layers: 0
@@ -19,7 +23,7 @@ model_options:
     - 60
   - - 0.3
     - 30
-  num_outputs: 4
+  num_outputs: 2
   weights: imagenet
 name: croptypes/vgg16_l2_ls60_lr0.001_d0.3_fl0_train
 optimizer: SGD

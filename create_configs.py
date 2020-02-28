@@ -1,3 +1,17 @@
+"""Create config file to train a model
+
+Usage:
+    python create_configs.py folds_path results_path config_name
+    
+Args:
+    folds_path:
+        Path to a folder with fold files (e.g. train.txt and test.txt)
+    results_path:
+        Path to a folder where you want to save the results (model files, tensorboard logs, etc.)
+    config_name:
+        Name of configuration - will be used in all model names.
+"""
+
 from copy import deepcopy
 from glob import glob
 import sys
